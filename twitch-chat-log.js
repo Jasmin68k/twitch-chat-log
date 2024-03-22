@@ -209,24 +209,7 @@ let isConnected = false
 
 function handleError(error) {
   console.error(`${formatCurrentTime()} WebSocket error:`, error.message)
-
-  if (!isConnected) {
-    if (attempt < maxAttempts) {
-      const retryDelay = Math.pow(2, attempt) * 1000
-      console.error(
-        `${formatCurrentTime()} Attempting to reconnect in ${
-          retryDelay / 1000
-        } seconds...`
-      )
-      setTimeout(setupWebSocket, retryDelay)
-      attempt++
-    } else {
-      console.error(
-        `${formatCurrentTime()} Maximum reconnection attempts exceeded. Exiting...`
-      )
-      process.exit(1)
-    }
-  }
+  // Do not immediately attempt to reconnect here, let handleClose() handle it.
 }
 
 function startKeepaliveMechanism() {
@@ -238,9 +221,9 @@ function startKeepaliveMechanism() {
       clearTimeout(keepaliveTimeout)
       keepaliveTimeout = setTimeout(() => {
         console.error(
-          `${formatCurrentTime()} No response to PING, attempting to reconnect...`
+          `${formatCurrentTime()} No response to PING, closing socket...`
         )
-        setupWebSocket()
+        socket.close() // This will trigger the handleClose event for reconnection
       }, keepaliveTimeoutTime)
     }
   }, keepaliveIntervalTime)
@@ -252,37 +235,37 @@ function stopKeepaliveMechanism() {
 }
 
 function setupWebSocket() {
+  if (attempt > maxAttempts) {
+    console.error(
+      `${formatCurrentTime()} Maximum reconnection attempts exceeded. Exiting...`
+    )
+    process.exit(1)
+  }
+
   if (socket) {
-    stopKeepaliveMechanism()
     socket.removeEventListener('message', handleMessage)
     socket.removeEventListener('close', handleClose)
     socket.removeEventListener('error', handleError)
     socket.close()
   }
 
-  attempt = 0
+  socket = new WebSocket('wss://irc-ws.chat.twitch.tv:443')
 
-  const attemptConnection = () => {
-    socket = new WebSocket('wss://irc-ws.chat.twitch.tv:443')
+  socket.addEventListener('message', handleMessage)
+  socket.addEventListener('close', handleClose)
+  socket.addEventListener('error', handleError)
 
-    socket.addEventListener('open', () => {
-      isConnected = true
-      attempt = 0
-      console.log(`${formatCurrentTime()} Connected to Twitch IRC`)
-      socket.send(`PASS oauth:${tokens.access_token}`)
-      socket.send(`NICK ${user}`)
-      channels.forEach((channel) => {
-        socket.send(`JOIN #${channel}`)
-      })
-      startKeepaliveMechanism()
+  socket.addEventListener('open', () => {
+    isConnected = true
+    attempt = 0
+    console.log(`${formatCurrentTime()} Connected to Twitch IRC`)
+    socket.send(`PASS oauth:${tokens.access_token}`)
+    socket.send(`NICK ${user}`)
+    channels.forEach((channel) => {
+      socket.send(`JOIN #${channel}`)
     })
-
-    socket.addEventListener('message', handleMessage)
-    socket.addEventListener('close', handleClose)
-    socket.addEventListener('error', handleError)
-  }
-
-  attemptConnection()
+    startKeepaliveMechanism()
+  })
 }
 
 setupWebSocket()
