@@ -11,7 +11,13 @@ Lightweight, self-contained Node.js script to log Twitch chat messages from mult
 
 ## Requirements
 
-- Node.js
+- Node.js (with node-ws)
+
+Installation:
+
+```bash
+sudo apt-get install nodejs node-ws
+```
 
 ## Setup
 
